@@ -24,6 +24,10 @@ def bacteria_analysis_func(data_frame, interval_time, growth_rate_method, assign
     data_frame["ends"] = ''
     data_frame["strainRate"] = ''
     data_frame["strainRate_rolling"] = ''
+    
+    # fluorescence
+    data_frame["gfp_intensity"] = ''
+    data_frame["rfp_intensity"] = ''
 
     # useful for calculation of rolling average
     window_size = 5  # time steps
@@ -80,6 +84,13 @@ def bacteria_analysis_func(data_frame, interval_time, growth_rate_method, assign
                                      bacterium_features['orientation'])
 
             data_frame.at[idx, "ends"] = end_points
+            
+            # Fluorescence
+            data_frame.at[idx, "gfp_intensity"] = bacterium["Intensity_MeanIntensity_gfp_channel_14bit"]
+            data_frame.at[idx, "rfp_intensity"] = bacterium["Intensity_MeanIntensity_rfp_channel_14bit"]
+            
+            # Transconjugant flag
+            data_frame.at[idx, "transconjugant_flag"] = bacterium["Children_transconjugants_Count"]
 
             cell_age += 1
 
@@ -95,10 +106,22 @@ def bacteria_analysis_func(data_frame, interval_time, growth_rate_method, assign
             ['stepNum', 'ObjectNumber', 'id', 'label', 'divideFlag', 'cellAge', 'growthRate', 'LifeHistory', 'startVol',
              'targetVol', 'parent_id', 'pos', 'time', 'radius', 'length', 'ends', 'dir', 'cellType', 'strainRate',
              'strainRate_rolling']]
+             
+        # Redundant here to facilitate merging code.
+        data_frame_with_selected_col = data_frame[
+            ['stepNum', 'ObjectNumber', 'id', 'label', 'divideFlag', 'cellAge', 'growthRate', 'LifeHistory', 'startVol',
+             'targetVol', 'parent_id', 'pos', 'time', 'radius', 'length', 'ends', 'dir', 'cellType', 'strainRate',
+             'strainRate_rolling', 'gfp_intensity', 'rfp_intensity', 'transconjugant_flag']]   
     else:
         data_frame_with_selected_col = data_frame[
             ['stepNum', 'ObjectNumber', 'id', 'label', 'divideFlag', 'cellAge', 'growthRate', 'LifeHistory', 'startVol',
              'targetVol', 'parent_id', 'pos', 'time', 'radius', 'length', 'ends', 'dir', 'strainRate',
              'strainRate_rolling']]
+
+        # Redundant here to facilitate merging code.        
+        data_frame_with_selected_col = data_frame[
+            ['stepNum', 'ObjectNumber', 'id', 'label', 'divideFlag', 'cellAge', 'growthRate', 'LifeHistory', 'startVol',
+             'targetVol', 'parent_id', 'pos', 'time', 'radius', 'length', 'ends', 'dir', 'strainRate',
+             'strainRate_rolling', 'gfp_intensity', 'rfp_intensity', 'transconjugant_flag']]
 
     return data_frame, data_frame_with_selected_col
