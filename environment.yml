@@ -9,6 +9,8 @@ dependencies:
   - pandas>= 2.2.2
   - scikit-learn
   - matplotlib
-  - opencv-python
   - setuptools
   - scikit-image
+  - pip
+  - pip:
+      - opencv-python
