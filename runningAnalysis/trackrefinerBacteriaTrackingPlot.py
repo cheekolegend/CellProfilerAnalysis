@@ -9,24 +9,8 @@ import argparse
 import glob
 
 
-def angle_convert_to_radian(df):
-    """
-    Convert the orientation angles from degrees to radians and modify their values.
-
-    @param df DataFrame containing bacteria information with 'AreaShape_Orientation' column.
-
-    Returns:
-    DataFrame: Updated DataFrame with 'AreaShape_Orientation' converted to radians.
-    """
-    df["AreaShape_Orientation"] = -(df["AreaShape_Orientation"] + 90) * np.pi / 180
-    return df
-
-
 def checking_columns(data_frame):
     center_coordinate_columns = []
-
-    parent_image_number_col = [col for col in data_frame.columns if 'TrackObjects_ParentImageNumber_' in col][0]
-    parent_object_number_col = [col for col in data_frame.columns if 'TrackObjects_ParentObjectNumber_' in col][0]
 
     if 'Location_Center_X' in data_frame.columns and 'Location_Center_Y' in data_frame.columns:
         center_coordinate_columns = {'x': 'Location_Center_X', 'y': 'Location_Center_Y'}
@@ -38,14 +22,15 @@ def checking_columns(data_frame):
         print('There was no column corresponding to the center of bacteria.')
         breakpoint()
 
-    return center_coordinate_columns, parent_image_number_col, parent_object_number_col
+    return center_coordinate_columns
 
 
-def bac_info(bac_in_timestep, center_coordinate_columns):
+def bac_info(bac_in_timestep, um_per_pixel, center_coordinate_columns):
     """
     Extract key information about bacteria from a given DataFrame for a specific time step.
 
     @param bac_in_timestep DataFrame DataFrame containing bacteria information for a particular time step.
+    @param um_per_pixel float Conversion factor from pixels to micrometers.
     @param center_coordinate_columns dict column name of center_x & center_y
 
     Returns:
@@ -57,11 +42,11 @@ def bac_info(bac_in_timestep, center_coordinate_columns):
     """
 
     # Calculate the center coordinates of bacteria in micrometers
-    Objects_center_x = bac_in_timestep[center_coordinate_columns['x']]
-    Objects_center_y = bac_in_timestep[center_coordinate_columns['y']]
+    Objects_center_x = bac_in_timestep[center_coordinate_columns['x']] / um_per_pixel
+    Objects_center_y = bac_in_timestep[center_coordinate_columns['y']] / um_per_pixel
 
     # Calculate the major axis length of bacteria in micrometers
-    Objects_major_axis = bac_in_timestep["AreaShape_MajorAxisLength"]
+    Objects_major_axis = bac_in_timestep["length"] / um_per_pixel
 
     # Get the orientation of bacteria in radians
     Objects_orientation = bac_in_timestep["AreaShape_Orientation"]
@@ -114,8 +99,8 @@ def find_vertex(center_x, center_y, major, angle_rotation, angle_tolerance=1e-6)
     return [[vertex_1_x, vertex_1_y], [vertex_2_x, vertex_2_y]]
 
 
-def draw_tracking_plot(df_current, raw_images, timestep, axis, object_color, font_size, center_coordinate_columns,
-                       parent_image_number_col, parent_object_number_col):
+def draw_tracking_plot(df_current, raw_images, timestep, axis, object_color, um_per_pixel, font_size,
+                       center_coordinate_columns):
 
     """
     Plot the lineage life history of bacteria in a given time step on a background image (raw image).
@@ -125,10 +110,9 @@ def draw_tracking_plot(df_current, raw_images, timestep, axis, object_color, fon
     @param timestep int The current time step for which the plot is generated.
     @param axis matplotlib.axes.Axes The matplotlib axis on which to plot.
     @param object_color str Color used for plotting the bacteria.
+    @param um_per_pixel float Conversion factor from pixels to micrometers.
     @param font_size float Font size for labeling the cells.
     @param center_coordinate_columns dict column name of center_x & center_y
-    @param parent_image_number_col str column name of parent image number
-    @param parent_object_number_col str column name of parent object number
     """
 
     timestep = int(timestep)
@@ -145,7 +129,7 @@ def draw_tracking_plot(df_current, raw_images, timestep, axis, object_color, fon
 
     # Extract objects' information from the current time step
     Objects_center_coord_x, Objects_center_coord_y, Objects_major_current, Objects_orientation_current = \
-        bac_info(df_current, center_coordinate_columns)
+        bac_info(df_current, um_per_pixel, center_coordinate_columns)
 
     # Plot each cell
     num_cells = df_current.shape[0]
@@ -183,38 +167,38 @@ def draw_tracking_plot(df_current, raw_images, timestep, axis, object_color, fon
         final_pos2y = np.abs(pos2y + center_current[1]) / 2
 
         # Plot cell ID and parent ID
-        ax.text(final_pos1x, final_pos1y, int(df_current.iloc[cell_indx]["ObjectNumber"]), fontsize=font_size, color="#ff0000")
-        ax.text(final_pos2x, final_pos2y, int(df_current.iloc[cell_indx][parent_object_number_col]), fontsize=font_size,
+        ax.text(final_pos1x, final_pos1y, int(df_current.iloc[cell_indx]["id"]), fontsize=font_size, color="#ff0000")
+        ax.text(final_pos2x, final_pos2y, int(df_current.iloc[cell_indx]["parent_id"]), fontsize=font_size,
                 color="#0000ff")
 
 
-def tracking_bac(raw_img_dir, cellprofiler_csv_output_file, output_dir, object_color, font_size):
+def tracking_bac(raw_img_dir, trackrefiner_csv_output_file, output_dir, object_color, um_per_pixel, font_size):
     """
     Generate tracking plots for bacteria over different time steps using data from CSV file.
 
     @param raw_img_dir str Directory path where the raw images are stored.
-    @param cellprofiler_csv_output_file str Path to the CSV file output of Cellprofiler.
+    @param trackrefiner_csv_output_file str Path to the CSV file output of Trackrefiner.
     @param output_dir str Directory where the output plots should be saved.
     @param object_color str Color of objects in tracking plots.
+    @param um_per_pixel float Conversion factor from pixels to micrometers.
     @param font_size float Font size for labeling the cells in the plots.
     """
 
     # Read CSV file containing tracking data
-    df = pd.read_csv(cellprofiler_csv_output_file)
-    df = angle_convert_to_radian(df)
+    df = pd.read_csv(trackrefiner_csv_output_file)
 
-    center_coordinate_columns, parent_image_number_col, parent_object_number_col = checking_columns(df)
+    center_coordinate_columns = checking_columns(df)
 
     # Get list of all raw images
     raw_images = glob.glob(raw_img_dir + '/*.tif')
 
     # Get unique time steps
-    t = np.unique(df['ImageNumber'].values)
+    t = np.unique(df['stepNum'].values)
     num_digit = len(str(t[-1]))  # To format filenames consistently
 
     # Create output directory if not provided
     if output_dir is None:
-        output_dir = os.path.dirname(cellprofiler_csv_output_file) + '/Cellprofiler_tracking_plot/'
+        output_dir = os.path.dirname(trackrefiner_csv_output_file) + '/Trackrefiner_tracking_plot/'
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -222,23 +206,23 @@ def tracking_bac(raw_img_dir, cellprofiler_csv_output_file, output_dir, object_c
         print('Time Step: ' + str(timestep))
 
         # Get data for the current timestep
-        df_current = df.loc[df["ImageNumber"] == timestep]
+        df_current = df.loc[df["stepNum"] == timestep]
         df_current = df_current.reset_index(drop=True)
 
         # Plot tracking plot for the current timestep
         fig, ax = plt.subplots()
-        draw_tracking_plot(df_current, raw_images, timestep, ax, object_color, font_size, center_coordinate_columns,
-                           parent_image_number_col, parent_object_number_col)
+        draw_tracking_plot(df_current, raw_images, timestep, ax, object_color, um_per_pixel, font_size,
+                           center_coordinate_columns)
 
         # Add legend and title
-        plt.suptitle("Cellprofiler: Tracking objects in time step = " + str(timestep), fontsize=14, fontweight="bold")
-        parent_patch = mpatches.Patch(color='#0000ff', label='Parent object number', )
-        bacteria_patch = mpatches.Patch(color='#ff0000', label='Bacteria object number', )
-        plt.legend(handles=[parent_patch, bacteria_patch], loc='upper right', ncol=6,
+        plt.suptitle("Trackrefiner: Tracking objects in time step = " + str(timestep), fontsize=14, fontweight="bold")
+        parent_patch = mpatches.Patch(color='#0000ff', label='parent', )
+        id_patch = mpatches.Patch(color='#ff0000', label='identity id', )
+        plt.legend(handles=[parent_patch, id_patch], loc='upper right', ncol=6,
                    bbox_to_anchor=(.75, 1.07), prop={'size': 7})
 
         # Save the figure
-        fig.savefig(output_dir + '/' + "Cellprofiler.timeStep t = " +
+        fig.savefig(output_dir + '/' + "Trackrefiner.timeStep t = " +
                     '0' * (num_digit - len(str(timestep))) + str(timestep) + ".png", dpi=600)
         # Close the figure
         fig.clf()
@@ -248,17 +232,20 @@ def tracking_bac(raw_img_dir, cellprofiler_csv_output_file, output_dir, object_c
 if __name__ == "__main__":
 
     # Initialize the ArgumentParser object
-    parser = argparse.ArgumentParser(description='Generate tracking plots for cell lineages using Cellprofiler output.')
+    parser = argparse.ArgumentParser(description='Generate tracking plots for cell lineages using Trackrefiner output.')
 
     # Add arguments for command line interface
-    parser.add_argument('-t', '--cellprofiler_csv_output_file', help='CSV file output of Cellprofiler.')
+    parser.add_argument('-t', '--trackrefiner_csv_output_file', help='CSV file output of Trackrefiner.')
 
     parser.add_argument('-r', '--raw_image_dir', help='Directory containing raw images. '
                                                       'The format of raw images should be tif.')
 
     parser.add_argument('-o', '--output', default=None,
                         help="Directory where to save tracking plots. "
-                             "Default value: Save to the Cellprofiler output file folder.")
+                             "Default value: Save to the Trackrefiner output file folder.")
+
+    parser.add_argument('-u', '--umPerPixel', default=0.144,
+                        help="Conversion factor from pixels to micrometers. Default value: 0.144.")
 
     parser.add_argument('-c', '--objectColor', default="#56e64e",
                         help="Color of objects in tracking plots. Default value: #56e64e.")
@@ -271,10 +258,11 @@ if __name__ == "__main__":
 
     # Assign parsed arguments to variables
     raw_img_dir = args.raw_image_dir
-    cellprofiler_csv_output_file = args.cellprofiler_csv_output_file
+    trackrefiner_csv_output_file = args.trackrefiner_csv_output_file
     output_dir = args.output
     object_color = args.objectColor
+    um_per_pixel = float(args.umPerPixel)
     font_size = float(args.font_size)
 
     # Generate tracking plots for bacteria
-    tracking_bac(raw_img_dir, cellprofiler_csv_output_file, output_dir, object_color, font_size)
+    tracking_bac(raw_img_dir, trackrefiner_csv_output_file, output_dir, object_color, um_per_pixel, font_size)
